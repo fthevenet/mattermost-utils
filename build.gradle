@@ -34,9 +34,19 @@ dependencies {
     compile 'net.bis5.mattermost4j:mattermost4j-core:0.20.0'
     compile 'info.picocli:picocli:4.2.0'
     annotationProcessor 'info.picocli:picocli-codegen:4.2.0'
-    compile 'org.apache.logging.log4j:log4j-core:2.13.1'
+//    compile 'org.apache.logging.log4j:log4j-core:2.13.1'
 }
 
 compileJava {
     options.compilerArgs += ["-Aproject=${project.group}/${project.name}"]
+}
+
+jar {
+    manifest {
+        attributes "Main-Class": "${mainClassName}"
+    }
+
+    from {
+        configurations.compile.collect { it.isDirectory() ? it : zipTree(it) }
+    }
 }

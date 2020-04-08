@@ -22,6 +22,7 @@ import net.bis5.mattermost.client4.Pager;
 import net.bis5.mattermost.model.Post;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.Help.Ansi;
 import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Spec;
@@ -31,8 +32,10 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Arrays;
 import java.util.concurrent.Callable;
 import java.util.logging.Level;
+import java.util.stream.Collectors;
 
 @Command(
         name = "mattermost-utils",
@@ -67,8 +70,14 @@ public class MattermostUtils implements Callable<Integer> {
         @Option(names = {"-u", "--url"}, description = "Mattermost address")
         private URI mmAddress = URI.create("http://mattermost.exemple.com");
 
+        @Option(names = {"-v", "--verbose"}, description = "Display detailed info")
+        private boolean isVerbose;
+
+        protected final ConsoleHelper out =  new ConsoleHelper();;
+
         @Override
         public Integer call() throws Exception {
+            out.setVerbose(isVerbose);
             client = new MattermostClient.MattermostClientBuilder()
                     .url(mmAddress.toString())
                     .logLevel(Level.FINE)
@@ -79,22 +88,21 @@ public class MattermostUtils implements Callable<Integer> {
                 execute(client);
                 return 0;
             } catch (MattermostApiException me) {
-                System.err.println(me.getMessage());
+                out.printException(me);
                 return me.getApiError().getStatusCode();
             } catch (javax.ws.rs.ProcessingException pe) {
-                System.err.println("An error occured while processing response from server: " + pe.getMessage());
+                out.printException("An error occurred while processing response from server", pe);
                 return 99;
             }
         }
 
         protected abstract Integer execute(MattermostClient client) throws MattermostApiException;
 
-
         protected <T> boolean checkForApiError(ApiResponse<T> response) {
             if (response.hasError()) {
                 var error = response.readError();
                 if (error != null && error.getStatusCode() > 200) {
-                    System.err.println(MattermostApiException.formatApiErrorMessage("Mattermost error", error));
+                    out.printError(MattermostApiException.formatApiErrorMessage("Mattermost error", error));
                     return true;
                 }
             }
@@ -109,7 +117,6 @@ public class MattermostUtils implements Callable<Integer> {
                 }
             }
         }
-
     }
 
     @Command(name = "set-avatar", aliases = {"sa"}, description = "set users avatar")
@@ -119,16 +126,17 @@ public class MattermostUtils implements Callable<Integer> {
             var pager = Pager.defaultPager();
             var getUserResponse = client.getUsers(pager);
             throwOnApiError(getUserResponse);
+            out.printMessage("Listing users:");
             getUserResponse.readEntity().forEach(user -> {
-                System.out.println(user.getEmail());
+                out.printValue(user.getEmail());
                 var response = client.getProfileImage(user.getId());
-                if (checkForApiError(response)){
-                    System.err.println("Could not get profile image for user " + user.getEmail());
+                if (checkForApiError(response)) {
+                    out.printError("Could not get profile image for user " + user.getEmail());
                 }
                 try {
                     Files.write(Path.of("c:\\temp\\" + user.getId() + ".png"), response.readEntity(), StandardOpenOption.CREATE);
                 } catch (IOException e) {
-                    e.printStackTrace();
+                    out.printException(e);
                 }
 
                 //  client.setProfileImage(user.getId(), );
@@ -144,16 +152,16 @@ public class MattermostUtils implements Callable<Integer> {
         protected Integer execute(MattermostClient client) throws MattermostApiException {
             var response = client.getMe();
             throwOnApiError(response);
-            System.out.println("Id = " + response.readEntity().getId());
-            System.out.println("Username = " + response.readEntity().getUsername());
-            System.out.println("Email = " + response.readEntity().getEmail());
-            System.out.println("Last name = " + response.readEntity().getLastName());
-            System.out.println("First name = " + response.readEntity().getFirstName());
-            System.out.println("Nickname = " + response.readEntity().getNickname());
-            System.out.println("Role = " + response.readEntity().getRoles());
-            System.out.println("is Bot = " + response.readEntity().isBot());
-            if ( response.readEntity().isBot()) {
-                System.out.println("Bot description = " + response.readEntity().getBotDescription());
+            out.printKeyValuePair("Id", response.readEntity().getId());
+            out.printKeyValuePair("Username", response.readEntity().getUsername());
+            out.printKeyValuePair("Email", response.readEntity().getEmail());
+            out.printKeyValuePair("Last name", response.readEntity().getLastName());
+            out.printKeyValuePair("First name", response.readEntity().getFirstName());
+            out.printKeyValuePair("Nickname", response.readEntity().getNickname());
+            out.printKeyValuePair("Role", response.readEntity().getRoles());
+            out.printKeyValuePair("is Bot", response.readEntity().isBot());
+            if (response.readEntity().isBot()) {
+                out.printKeyValuePair("Bot description", response.readEntity().getBotDescription());
             }
             return 0;
         }
@@ -170,7 +178,7 @@ public class MattermostUtils implements Callable<Integer> {
         @Override
         protected Integer execute(MattermostClient client) throws MattermostApiException {
             throwOnApiError(client.createPost(new Post(channelId, messageText)));
-            System.out.println("Message successfully posted.");
+            out.printMessage("Message successfully posted.");
             return 0;
         }
     }
