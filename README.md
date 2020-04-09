@@ -3,7 +3,7 @@
 
 A collection of utilities for Mattermost
 
-###Usage
+### Usage
 
 Build or download the mattermost-utils jar file and start with the following command line, using Java 11 or higher:
 ```
@@ -25,7 +25,7 @@ Commands:
 
 The following commands are available:
 
-#####set-avatar
+##### set-avatar
 ```
 Usage: mattermost-utils set-avatar [-dfhvV] [-a=<avatarServiceUrl>]
                                    [-t=<token>] [-u=<mattermostUrl>]
@@ -46,7 +46,7 @@ set users avatar
   -V, --version         Print version information and exit.
 ```
 
-#####who-am-i
+##### who-am-i
 ```
 Usage: mattermost-utils who-am-i [-hvV] [-t=<token>] [-u=<mattermostUrl>]
 Display info on the authenticated user.
@@ -58,7 +58,7 @@ Display info on the authenticated user.
   -V, --version         Print version information and exit.
 ```
 
-#####post-message
+##### post-message
 ```
 Usage: mattermost-utils post-message [-hvV] [-c=<channelId>] [-m=<messageText>]
                                      [-t=<token>] [-u=<mattermostUrl>]
