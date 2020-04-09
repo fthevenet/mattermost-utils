@@ -19,7 +19,7 @@ plugins {
 }
 
 group 'eu.fthevenet'
-version '1.0-SNAPSHOT'
+version '0.1-SNAPSHOT'
 
 mainClassName = "eu.fthevenet.mattermost.MattermostUtils"
 

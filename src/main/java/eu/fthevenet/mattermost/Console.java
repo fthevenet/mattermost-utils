@@ -21,15 +21,14 @@ import picocli.CommandLine;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
-public class ConsoleHelper {
+public enum Console {
+    io;
     private boolean verbose;
 
-    public ConsoleHelper(){
-    }
-
-    public void printMessage(Object value){
+    public void printMessage(Object value) {
         printMessage(value, true);
     }
+
     public void printMessage(Object value, boolean addLF) {
         System.out.print(CommandLine.Help.Ansi.AUTO.string(String.format(
                 "@|bold,blue %s|@%s",
@@ -51,15 +50,16 @@ public class ConsoleHelper {
     }
 
     public void printKeyValuePair(String key, Object value) {
-        printMessage(key+": ", false);
+        printMessage(key + ": ", false);
         printValue(value);
     }
+
     public void printError(String error) {
         printError(error, true);
     }
 
     public void printError(String error, boolean addLF) {
-        System.out.print(CommandLine.Help.Ansi.AUTO.string(String.format("@|red %s|@%s", error,(addLF ? "\n" : ""))));
+        System.out.print(CommandLine.Help.Ansi.AUTO.string(String.format("@|red %s|@%s", error, (addLF ? "\n" : ""))));
     }
 
     public void printException(String message, Throwable t) {
@@ -100,4 +100,7 @@ public class ConsoleHelper {
     public boolean isVerbose() {
         return verbose;
     }
+
+
+
 }
