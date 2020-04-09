@@ -18,8 +18,13 @@ plugins {
     id 'application'
 }
 
+ext.IS_TAG = System.getenv('IS_TAG') != null ? System.getenv('IS_TAG') == "true" : false
+ext.IS_RELEASE = IS_TAG && !(System.getenv('REPO_TAG_NAME').endsWith('-SNAPSHOT'))
+ext.VERSION_STEM = "0.1"
+ext.PRODUCT_VERSION = "${VERSION_STEM}${IS_RELEASE ? '' : '-SNAPSHOT'}"
+
 group 'eu.fthevenet'
-version '0.1-SNAPSHOT'
+version "${PRODUCT_VERSION}"
 
 mainClassName = "eu.fthevenet.mattermost.MattermostUtils"
 
@@ -34,7 +39,6 @@ dependencies {
     compile 'net.bis5.mattermost4j:mattermost4j-core:0.20.0'
     compile 'info.picocli:picocli:4.2.0'
     annotationProcessor 'info.picocli:picocli-codegen:4.2.0'
-//    compile 'org.apache.logging.log4j:log4j-core:2.13.1'
 }
 
 compileJava {
