@@ -22,17 +22,20 @@ import net.bis5.mattermost.client4.Pager;
 import net.bis5.mattermost.model.Post;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
-import picocli.CommandLine.Help.Ansi;
 import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Spec;
 
+import javax.ws.rs.core.UriBuilder;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URL;
+import java.nio.channels.Channels;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
-import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
@@ -73,7 +76,8 @@ public class MattermostUtils implements Callable<Integer> {
         @Option(names = {"-v", "--verbose"}, description = "Display detailed info")
         private boolean isVerbose;
 
-        protected final ConsoleHelper out =  new ConsoleHelper();;
+        protected final ConsoleHelper out = new ConsoleHelper();
+        ;
 
         @Override
         public Integer call() throws Exception {
@@ -121,30 +125,69 @@ public class MattermostUtils implements Callable<Integer> {
 
     @Command(name = "set-avatar", aliases = {"sa"}, description = "set users avatar")
     static class SetAvatars extends MattermostCommand {
+
+        @Option(names = {"-a", "--avatar-service-url"}, description = "The URL to the avatar service")
+        private URI avatarSvcAddress = URI.create("https://www.gravatar.com/avatar/");
+
+        @Option(names = {"-f", "--force"}, description = "Force update avatar even if it had been setup by the user")
+        private boolean forceUpdate = false;
+
+        @Option(names = {"-e", "--user-emails"}, description = "List of user emails to explicitly update")
+        private List<String> emails = new ArrayList<>();
+
+        @Option(names = {"-d", "--dry-run"}, description = "Dry run: profile image won't actually be updated")
+        private boolean dryRun = false;
+
+
         @Override
         protected Integer execute(MattermostClient client) throws MattermostApiException {
             var pager = Pager.defaultPager();
             var getUserResponse = client.getUsers(pager);
             throwOnApiError(getUserResponse);
-            out.printMessage("Listing users:");
-            getUserResponse.readEntity().forEach(user -> {
-                out.printValue(user.getEmail());
-                var response = client.getProfileImage(user.getId());
-                if (checkForApiError(response)) {
-                    out.printError("Could not get profile image for user " + user.getEmail());
+            out.printMessage("Processing users");
+            for (var user : getUserResponse.readEntity()
+                    .stream()
+                    .filter(u -> emails.isEmpty() || emails.contains(u.getEmail()))
+                    .collect(Collectors.toList())) {
+                if (forceUpdate || user.getLastPictureUpdate() == 0) {
+                    out.printValue(user.getEmail());
+                    try {
+                        URL downloadUrl = UriBuilder
+                                .fromUri(avatarSvcAddress)
+                                .queryParam("mail", user.getEmail())
+                                .queryParam("s", 128)
+                                .build().toURL();
+                        Path img = downloadProfileImage(downloadUrl);
+                        out.printDebug("Profile image saved to " + img);
+                        if (!dryRun) {
+                            client.setProfileImage(user.getId(), img);
+                        }else{
+                            out.printMessage("[Dry run: nothing happened] ", false);
+                        }
+                        out.printMessage("Updated " + user.getEmail() + " with image at " + img);
+                    } catch (IOException e) {
+                        out.printError("Failed to recover profile image for user " + user.getEmail());
+                        out.printException(e);
+                    }
+                }else{
+                    out.printDebug("Skip update for user " + user.getEmail());
                 }
-                try {
-                    Files.write(Path.of("c:\\temp\\" + user.getId() + ".png"), response.readEntity(), StandardOpenOption.CREATE);
-                } catch (IOException e) {
-                    out.printException(e);
-                }
-
-                //  client.setProfileImage(user.getId(), );
-            });
-
+            }
             return 0;
         }
+
+        private Path downloadProfileImage(URL url) throws IOException {
+            var destPath = Files.createTempFile("userImg", "");
+            destPath.toFile().deleteOnExit();
+            try (var sourceChannel = Channels.newChannel(url.openStream())) {
+                try (var destChannel = new FileOutputStream(destPath.toFile()).getChannel()) {
+                    destChannel.transferFrom(sourceChannel, 0, Long.MAX_VALUE);
+                }
+            }
+            return destPath;
+        }
     }
+
 
     @Command(name = "whoami", aliases = {"me"}, description = "Display info on the authenticated user")
     static class GetMe extends MattermostCommand {
