@@ -130,7 +130,7 @@ public class MattermostUtils implements Callable<Integer> {
     }
 
     @Command(name = "set-avatar", aliases = {"sa"},
-            description = "set users avatar",
+            description = "Update users' profile pictures from an avatar service.",
             mixinStandardHelpOptions = true,
             version = MattermostUtils.VERSION)
     static class SetAvatars extends MattermostCommand {
@@ -201,9 +201,9 @@ public class MattermostUtils implements Callable<Integer> {
     }
 
 
-    @Command(name = "whoami",
+    @Command(name = "who-am-i",
             aliases = {"me"},
-            description = "Display info on the authenticated user",
+            description = "Display info on the authenticated user.",
             mixinStandardHelpOptions = true,
             version = MattermostUtils.VERSION)
     static class GetMe extends MattermostCommand {
@@ -228,7 +228,7 @@ public class MattermostUtils implements Callable<Integer> {
 
     @Command(name = "post-message",
             aliases = {"msg"},
-            description = "Post a message to a channel",
+            description = "Post a message to a channel.",
             mixinStandardHelpOptions = true,
             version = MattermostUtils.VERSION)
     static class PostMessage extends MattermostCommand {
