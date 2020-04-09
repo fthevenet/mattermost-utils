@@ -160,16 +160,19 @@ public class MattermostUtils implements Callable<Integer> {
                         Path img = downloadProfileImage(downloadUrl);
                         out.printDebug("Profile image saved to " + img);
                         if (!dryRun) {
-                            client.setProfileImage(user.getId(), img);
-                        }else{
-                            out.printMessage("[Dry run: nothing happened] ", false);
+                            if (!checkForApiError(client.setProfileImage(user.getId(), img))) {
+                                out.printMessage("Updated " + user.getEmail() + " with image at " + img);
+                            }
+                        } else {
+                            out.printMessage("[Dry run: nothing happened] Updated " +
+                                    user.getEmail() +
+                                    " with image at " + img);
                         }
-                        out.printMessage("Updated " + user.getEmail() + " with image at " + img);
                     } catch (IOException e) {
                         out.printError("Failed to recover profile image for user " + user.getEmail());
                         out.printException(e);
                     }
-                }else{
+                } else {
                     out.printDebug("Skip update for user " + user.getEmail());
                 }
             }
