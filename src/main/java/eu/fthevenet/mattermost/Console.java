@@ -73,11 +73,11 @@ public enum Console {
         printDebug(t);
     }
 
-    public void printDebug(String debug) {
+    public void printDebug(Object debug) {
         printDebug(debug, true);
     }
 
-    public void printDebug(String debug, boolean addLF) {
+    public void printDebug(Object debug, boolean addLF) {
         if (verbose) {
             System.out.print(CommandLine.Help.Ansi.AUTO.string(String.format("@|fg(238) %s|@%s", debug, (addLF ? "\n" : ""))));
         }

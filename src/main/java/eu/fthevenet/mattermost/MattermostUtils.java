@@ -27,6 +27,7 @@ import picocli.CommandLine.Option;
 import picocli.CommandLine.Spec;
 
 import javax.ws.rs.core.UriBuilder;
+import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URI;
@@ -57,15 +58,52 @@ public class MattermostUtils implements Callable<Integer> {
     @Spec
     CommandSpec spec;
 
+    public static void main(String[] args) {
+        int exitCode = new CommandLine(new MattermostUtils()).execute(args);
+        System.exit(exitCode);
+    }
+
+    public static void downloadTo(URL url, File destPath) throws IOException {
+        try (var sourceChannel = Channels.newChannel(url.openStream())) {
+            try (var destChannel = new FileOutputStream(destPath).getChannel()) {
+                destChannel.transferFrom(sourceChannel, 0, Long.MAX_VALUE);
+            }
+        }
+    }
+
     @Override
     public Integer call() throws Exception {
         CommandLine.usage(spec, System.out);
         return 0;
     }
 
-    public static void main(String[] args) {
-        int exitCode = new CommandLine(new MattermostUtils()).execute(args);
-        System.exit(exitCode);
+    @Command(name = "download-files",
+            aliases = {"dl"},
+            description = "Download a series of files",
+            mixinStandardHelpOptions = true,
+            version = MattermostUtils.VERSION)
+    public int downloadFiles(
+            @Option(names = {"-u", "--template-url"}, description = "Template URL") String templateUrl,
+            @Option(names = {"-o", "--output-template"}, description = "Output template") String output,
+            @Option(names = {"-f", "--from"}, description = "From", defaultValue = "0") int from,
+            @Option(names = {"-t", "--To"}, description = "To", defaultValue = "1") int to,
+            @Option(names = {"-v", "--verbose"}, description = "Display detailed info") boolean isVerbose) {
+        Console.io.setVerbose(isVerbose);
+        for (int i = from; i < to; i++) {
+            try {
+                var url = new URL(templateUrl
+                        .replace("{i}", Integer.toString(i))
+                        .replace("{i+1}", Integer.toString(i + 1)));
+                var destination = Path.of(output
+                        .replace("{i}", Integer.toString(i))
+                        .replace("{i+1}", Integer.toString(i + 1)));
+                Console.io.printKeyValuePair(url.toString(), destination.toString());
+                downloadTo(url, destination.toFile());
+            } catch (IOException e) {
+                Console.io.printException(e);
+            }
+        }
+        return 0;
     }
 
     abstract static class MattermostCommand implements Callable<Integer> {
@@ -166,7 +204,9 @@ public class MattermostUtils implements Callable<Integer> {
                                 .queryParam("mail", user.getEmail())
                                 .queryParam("s", 128)
                                 .build().toURL();
-                        Path imgPath = downloadProfileImage(downloadUrl);
+                        var imgPath = Files.createTempFile("userImg", "");
+                        imgPath.toFile().deleteOnExit();
+                        downloadTo(downloadUrl, imgPath.toFile());
                         Console.io.printDebug("Profile image saved to " + imgPath);
                         if (!dryRun) {
                             if (!checkForApiError(client.setProfileImage(user.getId(), imgPath))) {
@@ -186,17 +226,6 @@ public class MattermostUtils implements Callable<Integer> {
                 }
             }
             return 0;
-        }
-
-        private Path downloadProfileImage(URL url) throws IOException {
-            var destPath = Files.createTempFile("userImg", "").toFile();
-            destPath.deleteOnExit();
-            try (var sourceChannel = Channels.newChannel(url.openStream())) {
-                try (var destChannel = new FileOutputStream(destPath).getChannel()) {
-                    destChannel.transferFrom(sourceChannel, 0, Long.MAX_VALUE);
-                }
-            }
-            return destPath.toPath();
         }
     }
 
