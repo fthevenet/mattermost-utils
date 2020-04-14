@@ -20,6 +20,7 @@ import net.bis5.mattermost.client4.ApiResponse;
 import net.bis5.mattermost.client4.MattermostClient;
 import net.bis5.mattermost.client4.Pager;
 import net.bis5.mattermost.model.Post;
+import net.bis5.mattermost.model.User;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
@@ -33,6 +34,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URL;
 import java.nio.channels.Channels;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -69,6 +71,17 @@ public class MattermostUtils implements Callable<Integer> {
                 destChannel.transferFrom(sourceChannel, 0, Long.MAX_VALUE);
             }
         }
+    }
+
+    public static boolean populateListFromFile(List<String> list, Path path) {
+        if (path != null) {
+            try {
+                return list.addAll(Files.readAllLines(path, StandardCharsets.UTF_8));
+            } catch (IOException e) {
+                Console.io.printException(e);
+            }
+        }
+        return false;
     }
 
     @Override
@@ -179,53 +192,71 @@ public class MattermostUtils implements Callable<Integer> {
         @Option(names = {"-f", "--force"}, description = "Force update avatar even if it had been setup by the user")
         private boolean forceUpdate = false;
 
-        @Option(names = {"-e", "--user-emails"}, description = "List of user emails to explicitly update")
-        private List<String> emails = new ArrayList<>();
+        @Option(names = {"-i", "--include-user"}, description = "User email to explicitly update")
+        private List<String> includeEmails = new ArrayList<>();
+
+        @Option(names = {"-x", "--exclude-user"}, description = "User email to explicitly exclude from the update")
+        private List<String> excludeEmails = new ArrayList<>();
+
+        @Option(names = {"--blacklist"}, description = "List of user emails to explicitly exclude from the update")
+        private Path blacklistPath;
+
+        @Option(names = {"--whitelist"}, description = "List of user emails to explicitly update")
+        private Path whitelistPath;
 
         @Option(names = {"-d", "--dry-run"}, description = "Dry run: profile images won't actually be updated")
         private boolean dryRun = false;
 
-
         @Override
         protected Integer execute(MattermostClient client) throws MattermostApiException {
-            var pager = Pager.defaultPager();
-            var getUserResponse = client.getUsers(pager);
-            throwOnApiError(getUserResponse);
-            Console.io.printMessage("Processing users");
-            for (var user : getUserResponse.readEntity()
-                    .stream()
-                    .filter(u -> emails.isEmpty() || emails.contains(u.getEmail()))
-                    .collect(Collectors.toList())) {
-                if (forceUpdate || user.getLastPictureUpdate() == 0) {
-                    Console.io.printValue(user.getEmail());
-                    try {
-                        URL downloadUrl = UriBuilder
-                                .fromUri(avatarServiceUrl)
-                                .queryParam("mail", user.getEmail())
-                                .queryParam("s", 128)
-                                .build().toURL();
-                        var imgPath = Files.createTempFile("userImg", "");
-                        imgPath.toFile().deleteOnExit();
-                        downloadTo(downloadUrl, imgPath.toFile());
-                        Console.io.printDebug("Profile image saved to " + imgPath);
-                        if (!dryRun) {
-                            if (!checkForApiError(client.setProfileImage(user.getId(), imgPath))) {
-                                Console.io.printMessage("Updated " + user.getEmail() + " with image at " + imgPath);
+            populateListFromFile(excludeEmails, blacklistPath);
+            populateListFromFile(includeEmails, whitelistPath);
+            var users = new ArrayList<User>();
+            for (var pager = Pager.defaultPager(); fetchUsers(client, pager, users); pager = pager.nextPage()) {
+                Console.io.printDebug("Processing users (page " + pager.getPage() + ")");
+                for (var user : users.stream()
+                        .filter(u -> !excludeEmails.contains(u.getEmail())
+                                && (includeEmails.isEmpty() || includeEmails.contains(u.getEmail())))
+                        .collect(Collectors.toList())) {
+                    if (forceUpdate || user.getLastPictureUpdate() == 0) {
+                        Console.io.printValue(user.getEmail());
+                        try {
+                            URL downloadUrl = UriBuilder
+                                    .fromUri(avatarServiceUrl)
+                                    .queryParam("mail", user.getEmail())
+                                    .queryParam("s", 128)
+                                    .build().toURL();
+                            var imgPath = Files.createTempFile("userImg", "");
+                            imgPath.toFile().deleteOnExit();
+                            downloadTo(downloadUrl, imgPath.toFile());
+                            Console.io.printDebug("Profile image saved to " + imgPath);
+                            if (!dryRun) {
+                                if (!checkForApiError(client.setProfileImage(user.getId(), imgPath))) {
+                                    Console.io.printMessage("Updated " + user.getEmail() + " with image at " + imgPath);
+                                }
+                            } else {
+                                Console.io.printMessage("[Dry run: nothing happened] Updated " +
+                                        user.getEmail() +
+                                        " with image at " + imgPath);
                             }
-                        } else {
-                            Console.io.printMessage("[Dry run: nothing happened] Updated " +
-                                    user.getEmail() +
-                                    " with image at " + imgPath);
+                        } catch (IOException e) {
+                            Console.io.printError("Failed to recover profile image for user " + user.getEmail());
+                            Console.io.printException(e);
                         }
-                    } catch (IOException e) {
-                        Console.io.printError("Failed to recover profile image for user " + user.getEmail());
-                        Console.io.printException(e);
+                    } else {
+                        Console.io.printDebug("Skip update for user " + user.getEmail());
                     }
-                } else {
-                    Console.io.printDebug("Skip update for user " + user.getEmail());
                 }
             }
             return 0;
+        }
+
+        private boolean fetchUsers(MattermostClient client, Pager pager, List<User> users) throws MattermostApiException {
+            var getUserResponse = client.getUsers(pager);
+            throwOnApiError(getUserResponse);
+            users.clear();
+            users.addAll(getUserResponse.readEntity());
+            return !users.isEmpty();
         }
     }
 

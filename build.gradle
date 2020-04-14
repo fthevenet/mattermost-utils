@@ -20,7 +20,7 @@ plugins {
 
 ext.IS_TAG = System.getenv('IS_TAG') != null ? System.getenv('IS_TAG') == "true" : false
 ext.IS_RELEASE = IS_TAG && !(System.getenv('REPO_TAG_NAME').endsWith('-SNAPSHOT'))
-ext.VERSION_STEM = "0.1"
+ext.VERSION_STEM = "0.2"
 ext.PRODUCT_VERSION = "${VERSION_STEM}${IS_RELEASE ? '' : '-SNAPSHOT'}"
 
 group 'eu.fthevenet'
