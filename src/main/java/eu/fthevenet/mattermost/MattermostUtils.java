@@ -37,8 +37,13 @@ import java.nio.channels.Channels;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.KeyStore;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.cert.CertificateException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.Callable;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
@@ -136,6 +141,18 @@ public class MattermostUtils implements Callable<Integer> {
             client = new MattermostClient.MattermostClientBuilder()
                     .url(mattermostUrl.toString())
                     .logLevel(Level.FINE)
+                    .httpConfig(clientBuilder -> {
+                        if (System.getProperty("os.name").toLowerCase(Locale.ROOT).startsWith("windows" )) {
+                            try {
+                                KeyStore tks = KeyStore.getInstance("Windows-ROOT");
+                                tks.load(null, null);
+                                clientBuilder.trustStore(tks);
+                            } catch (KeyStoreException | CertificateException | IOException |
+                                     NoSuchAlgorithmException e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
+                    })
                     .ignoreUnknownProperties()
                     .build();
             client.setAccessToken(token);
@@ -192,61 +209,60 @@ public class MattermostUtils implements Callable<Integer> {
         @Option(names = {"-f", "--force"}, description = "Force update avatar even if it had been setup by the user")
         private boolean forceUpdate = false;
 
-        @Option(names = {"-i", "--include-user"}, description = "User email to explicitly update")
-        private List<String> includeEmails = new ArrayList<>();
+        @Option(names = {"-i", "--include-user"}, description = "User names to explicitly update")
+        private List<String> includedUsernames = new ArrayList<>();
 
-        @Option(names = {"-x", "--exclude-user"}, description = "User email to explicitly exclude from the update")
-        private List<String> excludeEmails = new ArrayList<>();
+        @Option(names = {"-x", "--exclude-user"}, description = "User names to explicitly exclude from the update")
+        private List<String> excludedUsernames = new ArrayList<>();
 
-        @Option(names = {"--blacklist"}, description = "List of user emails to explicitly exclude from the update")
-        private Path blacklistPath;
+        @Option(names = {"--excludelist"}, description = "List of user names to explicitly exclude from the update")
+        private Path excludeListPath;
 
-        @Option(names = {"--whitelist"}, description = "List of user emails to explicitly update")
-        private Path whitelistPath;
+        @Option(names = {"--includelist"}, description = "List of user names to explicitly update")
+        private Path includeListPath;
 
         @Option(names = {"-d", "--dry-run"}, description = "Dry run: profile images won't actually be updated")
         private boolean dryRun = false;
 
         @Override
         protected Integer execute(MattermostClient client) throws MattermostApiException {
-            populateListFromFile(excludeEmails, blacklistPath);
-            populateListFromFile(includeEmails, whitelistPath);
+            populateListFromFile(excludedUsernames, excludeListPath);
+            populateListFromFile(includedUsernames, includeListPath);
             var users = new ArrayList<User>();
             for (var pager = Pager.defaultPager(); fetchUsers(client, pager, users); pager = pager.nextPage()) {
                 Console.io.printDebug("Processing users (page " + pager.getPage() + ")");
-                for (var user : users.stream()
-                        .filter(u -> !excludeEmails.contains(u.getEmail())
-                                && (includeEmails.isEmpty() || includeEmails.contains(u.getEmail())))
-                        .collect(Collectors.toList())) {
-                    if (forceUpdate || user.getLastPictureUpdate() == 0) {
-                        Console.io.printValue(user.getEmail());
-                        try {
-                            URL downloadUrl = UriBuilder
-                                    .fromUri(avatarServiceUrl)
-                                    .queryParam("mail", user.getEmail())
-                                    .queryParam("s", 128)
-                                    .build().toURL();
-                            var imgPath = Files.createTempFile("userImg", "");
-                            imgPath.toFile().deleteOnExit();
-                            downloadTo(downloadUrl, imgPath.toFile());
-                            Console.io.printDebug("Profile image saved to " + imgPath);
-                            if (!dryRun) {
-                                if (!checkForApiError(client.setProfileImage(user.getId(), imgPath))) {
-                                    Console.io.printMessage("Updated " + user.getEmail() + " with image at " + imgPath);
+                users.stream()
+                        .filter(u -> !excludedUsernames.contains(u.getUsername())
+                                && (includedUsernames.isEmpty() || includedUsernames.contains(u.getUsername())))
+                        .forEach(user -> {
+                            if (forceUpdate || user.getLastPictureUpdate() == 0) {
+                                Console.io.printValue(user.getUsername());
+                                try {
+                                    URL downloadUrl = UriBuilder
+                                            .fromUri(avatarServiceUrl)
+                                            .path(user.getUsername())
+                                            .build().toURL();
+                                    var imgPath = Files.createTempFile("userImg", "");
+                                    imgPath.toFile().deleteOnExit();
+                                    downloadTo(downloadUrl, imgPath.toFile());
+                                    Console.io.printDebug("Profile image saved to " + imgPath);
+                                    if (!dryRun) {
+                                        if (!checkForApiError(client.setProfileImage(user.getId(), imgPath))) {
+                                            Console.io.printMessage("Updated " + user.getUsername() + " with image at " + imgPath);
+                                        }
+                                    } else {
+                                        Console.io.printMessage("[Dry run: nothing happened] Updated " +
+                                                user.getUsername() +
+                                                " with image at " + imgPath);
+                                    }
+                                } catch (IOException e) {
+                                    Console.io.printError("Failed to recover profile image for user " + user.getUsername());
+                                    Console.io.printException(e);
                                 }
                             } else {
-                                Console.io.printMessage("[Dry run: nothing happened] Updated " +
-                                        user.getEmail() +
-                                        " with image at " + imgPath);
+                                Console.io.printDebug("Skip update for user " + user.getUsername());
                             }
-                        } catch (IOException e) {
-                            Console.io.printError("Failed to recover profile image for user " + user.getEmail());
-                            Console.io.printException(e);
-                        }
-                    } else {
-                        Console.io.printDebug("Skip update for user " + user.getEmail());
-                    }
-                }
+                        });
             }
             return 0;
         }
